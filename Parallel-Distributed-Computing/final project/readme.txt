@@ -1,4 +1,4 @@
-#Parallel and Distributed Computing - Final project
+#Parallel and Distributed Computing - Final project#
 
 
 Compilling & Running the project -
