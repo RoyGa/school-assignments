@@ -6,135 +6,7 @@
 #include <time.h>
 #include <math.h>
 
-#include "cipher.h"
-#include "hashmap.h"
-
-typedef enum {
-    OMP,
-    CUDA
-} State;
-
-typedef struct data {
-    char *text;
-    char *key;
-    int match;
-} Data;
-
-int countKnownWords(char* text, struct hashmap_s wordsHashmap) {
-    int counter = 0;
-    char* word;
-
-    // solution for strsep overwrite problem - copy words to a temp string
-    char* textBuffer = (char*)malloc(sizeof(char) * strlen(text));
-    strcpy(textBuffer, text);
-
-    // iterate over deciphered text words
-    while ((word = strsep(&textBuffer, " ")) != NULL) {
-        // check if current deciphered word exists in known words hashmap
-        if (hashmap_get(&wordsHashmap, word, strlen(word)) != NULL) {
-            counter++;
-        }
-    }
-
-    free(textBuffer);
-
-    return counter;
-}
-
-struct hashmap_s createKnownWordsHashmap(char* knownWords) {
-    const unsigned initial_size = 2;
-    struct hashmap_s hashmap;
-    char* word;
-    int placeholder = 0;
-
-    // init hashmap for known words
-    if (0 != hashmap_create(initial_size, &hashmap)) {
-        printf("Failed to create hashmap.");
-    }
-
-    // put known words into the hashmap
-    while ((word = strsep(&knownWords, "\n")) != NULL) {
-        if (0 != hashmap_put(&hashmap, word, strlen(word), &placeholder)) {
-            printf("Failed to put element into hashmap.");
-        }
-    }
-
-    return hashmap;
-}
-
-int calcLength(int num) {
-    int length = 0;
-
-    while (num != 0) {
-        num = num / 2;
-        length++;
-    }
-
-    return length;
-}
-
-// converts decimal number to its binary string representation
-char* decToBinary(int n, int keyLength) { 
-    int length = calcLength(n);
-    char* binaryKeyStr = (char*)malloc((length + 1) * sizeof(char));
-    int i = 0;
-
-    while (n > 0) { 
-        binaryKeyStr[length - 1 - i] = n % 2 + 48; 
-        n = n / 2; 
-        i++; 
-    }
-
-    binaryKeyStr[length] = '\0';
-    return binaryKeyStr;
-}
-
-Data OMPWork(char *encryptedText, int encryptedTextLength, int keyLength ,struct hashmap_s words, int from, int to) {
-    Data res;
-
-    // allocate memory for result data
-    res.key = (char*)malloc(keyLength * sizeof(char));
-    res.text = (char*)malloc(encryptedTextLength * sizeof(char));
-    res.match = 0;
-
-    // set the number of threads to be used
-    omp_set_num_threads(4);
-
-    // iterate over the keys in (from, to) range
-    #pragma omp parallel for
-    for (int key = from; key < to; key++) {
-        // convert decimal number to its binary string representation
-        char* keyStr = decToBinary(key, keyLength);
-
-        // convert the string (representing the binary key) to binary
-        binaryStringToBinary(keyStr, sizeof(keyStr));
-
-        // try to decipher the text using the current key
-        char *decipheredText = decipherString(keyStr, keyLength/8, encryptedText, encryptedTextLength);
-
-        // count how many known words the deciphered text contains
-        int count = countKnownWords(decipheredText, words);
-
-        // if current deciphered text contains more known words than other
-        // texts deciphered so far - update the results
-        if (count > res.match) {
-            #pragma omp critical
-            {
-                res.key = decToBinary(key, keyLength);
-                res.text = decipheredText;
-                // strcpy(res.text, decipheredText);
-                res.match = count;
-            }
-        }
-    }
-    return res;
-}
-
-Data decryptText(char *encryptedText, int encryptedTextLength, int keyLength, struct hashmap_s words, int from, int to, State state) {
-    if (state == OMP) {
-        return OMPWork(encryptedText, encryptedTextLength, keyLength, words, from, to);
-    } else if (state == CUDA) {}
-}
+#include "prot.h"
 
 int main(int argc, char *argv[]) {
     int size, rank;
@@ -148,35 +20,15 @@ int main(int argc, char *argv[]) {
     int keyLength, encryptedTextLength, wordsLength;
     FILE *encryptedTextFile, *wordsFile;
     char *encryptedText, *words;
-
     int keyCount, fromKey, toKey;
     State state;
     struct hashmap_s wordsHashmap;
-
-    // rank 0 will be the main process:
-    //      - get length of the key
-    //      - open ciphered file
-    //      - open words file
-    //      - read the ciphered.txt file into a string (?)
-    //      - read the words.txt file into a string array (?)
-    //      - send key length
-    //      - send ciphered string length
-    //      - send words length
-    //      - send the ciphered string
-    //      - send known words array
-
-    // other rank will be the child processes:
-    //      - recieve key length
-    //      - recieve ciphered string length
-    //      - recieve words length
-    //      - recieve the ciphered string
-    //      - recieve known words array
 
     if (rank == 0) {
         // get key length
         keyLength = atoi(argv[1]);
 
-        // 
+        // possible keys
         keyCount = pow(2, keyLength);
 
         // calculate key range for current process
@@ -190,24 +42,22 @@ int main(int argc, char *argv[]) {
         encryptedTextFile = fopen(argv[2], "r");
 
         if (!encryptedTextFile) {
-            printf("Couldn't open file: %s", argv[2]);
+            printf("\nCouldn't open file: %s\n", argv[2]);
             MPI_Abort(MPI_COMM_WORLD, 1);
         }
 
         if (argc > 3) {
             wordsFile = fopen(argv[3], "r");
         } else {
-            printf("No known word file given - will use default words file.");
+            printf("\nNo known word file was passed - will use default words file.\n");
             wordsFile = fopen("./words.txt", "r");
         }
 
-        wordsFile = fopen(filename, "r");
-
         if (!wordsFile) {
             if (argc > 3) {
-                printf("Couldn't open file: %s", argv[3]);
+                printf("\nCouldn't open file: %s\n", argv[3]);
             } else {
-                printf("Couldn't open file: ./words.txt");   
+                printf("\nCouldn't open file: ./words.txt\n");   
             }
         }
 

@@ -2,14 +2,8 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
-#define START_SIZE 512
-#define EXTEND_SIZE 32
-#define MAX_KEY_SIZE 4
 
-char *readStringFromFile(FILE *fp, size_t allocated_size, int *input_length);
-void binaryStringToBinary(char *string, size_t num_bytes);
-// void cipher(char *key, size_t key_len, FILE *input, FILE *output);
-char* decipherString(char *key, size_t key_len, char *input, int inputLength);
+#include "prot.h"
 
 char *readStringFromFile(FILE *fp, size_t allocated_size, int *input_length)
 {
@@ -53,28 +47,6 @@ void binaryStringToBinary(char *string, size_t num_bytes)
     memcpy(string,binary_key,num_bytes);
 }
 
-// void cipher(char *key, size_t key_len, FILE *input, FILE *output)
-// {
-//     int i, j = 0;
-//     size_t input_length;
-//     char *input_str = readStringFromFile(input, START_SIZE, &input_length);
-//     char *output_str = (char*)malloc(input_length * sizeof(char));
-//     if (!input_str || !output_str)
-//     {
-//         fprintf(stderr, "Error reading string\n");
-//         exit(0);
-//     }
-//     for (i = 0; i < input_length; i++, j++)
-//     {
-//         if (j == key_len)
-//             j = 0;
-//         output_str[i] = input_str[i] ^ key[j];
-//     }
-//     fwrite(output_str, sizeof(char), input_length, output);
-//     free(output_str);
-//     free(input_str);
-// }
-
 char* decipherString(char *key, size_t key_len, char *input, int inputLength)
 {
     int i, j = 0;
@@ -91,4 +63,31 @@ char* decipherString(char *key, size_t key_len, char *input, int inputLength)
         output_str[i] = input[i] ^ key[j];
     }
     return output_str;
+}
+
+int calcLength(int num) {
+    int length = 0;
+
+    while (num != 0) {
+        num = num / 2;
+        length++;
+    }
+
+    return length;
+}
+
+// converts decimal number to its binary string representation
+char* decToBinary(int n, int keyLength) { 
+    int length = calcLength(n);
+    char* binaryKeyStr = (char*)malloc((length + 1) * sizeof(char));
+    int i = 0;
+
+    while (n > 0) { 
+        binaryKeyStr[length - 1 - i] = n % 2 + 48; 
+        n = n / 2; 
+        i++; 
+    }
+
+    binaryKeyStr[length] = '\0';
+    return binaryKeyStr;
 }
